@@ -1,0 +1,48 @@
+# 环境 & 凭证
+.env
+.env.*
+!.env.example
+
+# AI 辅助配置文件（本地专用，不入库）
+CLAUDE.md
+
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# Python 编译产物
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+
+# 本地数据（体积大，不入库）
+raw_data/
+cache/
+
+# Jupyter 运行产物
+.ipynb_checkpoints/
+*.ipynb_metadata
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 测试 & 覆盖率
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
