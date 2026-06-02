@@ -104,40 +104,30 @@ class ContinuousContract:
         """
         Determine which contract is "main" at each 1-min bar.
 
-        Simple rule: among contracts whose expiry_month is strictly
-        after the current bar's date (minus roll_days), pick the one
-        with the highest open_interest.  Ties broken by nearest expiry.
+        Vectorized: build an OI matrix (timestamps × contracts), mask out
+        contracts near expiry, then idxmax per row to pick the active contract.
+        Ties broken by nearest expiry (columns sorted ascending by expiry).
         """
-        # Collect all timestamps across all contracts
-        all_times = pd.DatetimeIndex(
-            sorted(set().union(*[df.index for df in all_data.values()]))
-        )
-
         expiry_map: dict[str, pd.Timestamp] = {
             c.contract_id: c.expiry_month for c in contracts
         }
 
-        active: list[str] = []
-        for ts in all_times:
-            candidates = [
-                cid for cid, exp in expiry_map.items()
-                if cid in all_data
-                and exp > ts - pd.Timedelta(days=self.roll_days)
-                and ts in all_data[cid].index
-            ]
-            if not candidates:
-                active.append(np.nan)
-                continue
-            # Pick highest open_interest; break ties by nearest expiry
-            def sort_key(cid: str) -> tuple:
-                oi = all_data[cid].loc[ts, "open_interest"] if ts in all_data[cid].index else -1
-                exp = expiry_map[cid]
-                return (-oi, exp)
+        # OI matrix: index=all timestamps, columns=contract_ids, sorted by expiry
+        sorted_cids = sorted(all_data.keys(), key=lambda c: expiry_map.get(c, pd.Timestamp.max))
+        oi_frames = {cid: all_data[cid]["open_interest"] for cid in sorted_cids}
+        oi_matrix = pd.DataFrame(oi_frames)  # NaN where contract has no bar
 
-            best = min(candidates, key=sort_key)
-            active.append(best)
+        # Mask contracts that are too close to (or past) expiry:
+        # original condition: exp > ts - roll_days  ↔  ts < exp + roll_days
+        for cid in sorted_cids:
+            cutoff = expiry_map[cid] + pd.Timedelta(days=self.roll_days)
+            oi_matrix.loc[oi_matrix.index >= cutoff, cid] = np.nan
 
-        return pd.Series(active, index=all_times, name="contract")
+        # idxmax picks leftmost (nearest-expiry) column on ties; NaN rows → NaN
+        active = oi_matrix.idxmax(axis=1)
+        active[oi_matrix.isna().all(axis=1)] = np.nan
+
+        return active.rename("contract")
 
     def _stitch(
         self,
@@ -145,19 +135,20 @@ class ContinuousContract:
         roll_schedule: pd.Series,
     ) -> pd.DataFrame:
         """Concatenate bars from the active contract at each timestamp."""
-        rows = []
-        for ts, cid in roll_schedule.items():
-            if pd.isna(cid) or cid not in all_data:
+        pieces = []
+        for cid, df in all_data.items():
+            active_times = roll_schedule.index[roll_schedule == cid]
+            valid = active_times[active_times.isin(df.index)]
+            if valid.empty:
                 continue
-            df = all_data[cid]
-            if ts not in df.index:
-                continue
-            row = df.loc[ts].copy()
-            row["contract"] = cid
-            rows.append(row)
+            chunk = df.loc[valid].copy()
+            chunk["contract"] = cid
+            pieces.append(chunk)
 
-        result = pd.DataFrame(rows)
-        result.index = roll_schedule.dropna().index[:len(result)]
+        if not pieces:
+            return pd.DataFrame()
+
+        result = pd.concat(pieces).sort_index()
         result.index.name = "datetime"
         return result
 
