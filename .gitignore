@@ -26,6 +26,9 @@ build/
 raw_data/
 cache/
 
+# ML 训练产出（模型、OOF预测、HTML图表等生成文件，不入库）
+ml/artifacts/
+
 # Jupyter 运行产物
 .ipynb_checkpoints/
 *.ipynb_metadata

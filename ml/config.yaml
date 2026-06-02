@@ -1,0 +1,44 @@
+# ML 流水线配置
+# 修改此文件即可切换数据、特征、模型参数，无需改动代码
+
+data:
+  product: FU
+  data_dir: raw_data/1min_FU
+  cache_dir: cache
+  use_continuous: true          # true=连续主力合约, false=单合约
+  single_contract: FU2505       # use_continuous=false 时生效
+  start_date: "2021-01-01"
+  end_date:   "2025-04-30"
+  roll_buffer: 30               # 换月节点前后清洗的 bar 数
+
+features:
+  lags: [1, 5, 20]              # 对所有因子添加的滞后阶数
+  rolling_windows: [20]         # 添加滚动均值/标准差的窗口（天）
+
+labels:
+  forward_days: 1               # 预测未来几个交易日的收益
+  label_type: regression        # regression | classification
+  threshold: 0.003              # 分类标签的阈值（仅 classification 生效）
+
+model:
+  type: lightgbm
+  params:
+    objective: regression
+    metric: rmse
+    num_leaves: 31
+    learning_rate: 0.05
+    feature_fraction: 0.8
+    bagging_fraction: 0.8
+    bagging_freq: 5
+    min_child_samples: 20
+    verbose: -1
+  num_boost_round: 500
+  early_stopping_rounds: 50
+
+training:
+  n_splits: 5                   # 时序交叉验证折数
+  gap: 1                        # 训练集与验证集之间的间隔（天），防止标签重叠
+  min_train_size: 120           # 每折最少训练天数
+
+output:
+  artifacts_dir: ml/artifacts   # 模型、OOF 预测、指标的保存路径
