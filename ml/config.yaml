@@ -38,7 +38,8 @@ model:
 training:
   n_splits: 5                   # 时序交叉验证折数
   gap: 1                        # 训练集与验证集之间的间隔（天），防止标签重叠
-  min_train_size: 120           # 每折最少训练天数
+  # test_size: null             # 每折验证集大小（天），null=自动
+  # max_train_size: null        # 每折最大训练集大小（天），null=不限
 
 output:
   artifacts_dir: ml/artifacts   # 模型、OOF 预测、指标的保存路径

@@ -108,7 +108,8 @@ def train(cfg: dict) -> dict:
     tscv = TimeSeriesSplit(
         n_splits=tcfg['n_splits'],
         gap=tcfg.get('gap', 1),
-        min_train_size=tcfg.get('min_train_size', 120),
+        test_size=tcfg.get('test_size', None),
+        max_train_size=tcfg.get('max_train_size', None),
     )
 
     oof_preds = pd.Series(np.nan, index=y.index, name='oof_pred')
