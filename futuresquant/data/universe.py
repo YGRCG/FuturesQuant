@@ -35,11 +35,15 @@ class ContinuousContract:
         product: str,
         adjust: AdjustMethod = "back",
         roll_n_days_before_expiry: int = 5,
+        roll_hysteresis: float = 0.20,
+        roll_min_hold_days: int = 3,
     ):
         self.loader = loader
         self.product = product.upper()
         self.adjust = adjust
         self.roll_days = roll_n_days_before_expiry
+        self.roll_hysteresis = roll_hysteresis
+        self.roll_min_hold_days = roll_min_hold_days
 
     # ------------------------------------------------------------------
     # Public API
@@ -76,6 +80,92 @@ class ContinuousContract:
             continuous = self._adjust(continuous)
 
         return continuous
+
+    def build_term_structure(
+        self,
+        start: str | pd.Timestamp | None = None,
+        end: str | pd.Timestamp | None = None,
+    ) -> pd.Series:
+        """
+        Daily term structure: (next_contract_close - front_contract_close) / front_contract_close.
+
+        Front = contract with the highest open interest (excluding near-expiry).
+        Next  = contract with the nearest expiry after the front contract.
+
+        Returns a daily Series named "term_structure".  NaN on days when no
+        next contract data is available (e.g. the last available delivery month).
+
+        Usage in notebooks::
+
+            ts = cc.build_term_structure(start=START_DATE, end=END_DATE)
+            klines["term_structure"] = ts.reindex(klines.index, method="ffill")
+        """
+        contracts = self.loader.list_contracts(self.product)
+        if not contracts:
+            return pd.Series(dtype=float, name="term_structure")
+
+        all_data: dict[str, pd.DataFrame] = {}
+        for c in contracts:
+            df = self.loader.load(c, start=start, end=end)
+            if not df.empty:
+                all_data[c.contract_id] = df
+
+        if not all_data:
+            return pd.Series(dtype=float, name="term_structure")
+
+        expiry_map: dict[str, pd.Timestamp] = {
+            c.contract_id: c.expiry_month for c in contracts
+        }
+        sorted_cids = sorted(
+            all_data.keys(), key=lambda c: expiry_map.get(c, pd.Timestamp.max)
+        )
+
+        # Daily close and OI matrices
+        close_matrix = pd.DataFrame(
+            {cid: all_data[cid]["close"].resample("1D").last() for cid in sorted_cids}
+        )
+        oi_matrix = pd.DataFrame(
+            {cid: all_data[cid]["open_interest"].resample("1D").last() for cid in sorted_cids}
+        )
+
+        # Mask near-expiry contracts
+        for cid in sorted_cids:
+            cutoff = expiry_map[cid] + pd.Timedelta(days=self.roll_days)
+            oi_matrix.loc[oi_matrix.index >= cutoff, cid] = np.nan
+
+        # Front contract = highest OI per day
+        front_contract = oi_matrix.idxmax(axis=1)
+        front_contract[oi_matrix.isna().all(axis=1)] = np.nan
+
+        result = pd.Series(np.nan, index=close_matrix.index, name="term_structure")
+
+        # Vectorised: iterate over unique front contracts (typically ~30 over 15 years)
+        for front_cid in front_contract.dropna().unique():
+            front_expiry = expiry_map.get(front_cid)
+            if front_expiry is None:
+                continue
+
+            next_candidates = [
+                c for c in sorted_cids
+                if expiry_map.get(c, pd.Timestamp.max) > front_expiry
+            ]
+            if not next_candidates:
+                continue
+            next_cid = next_candidates[0]
+
+            if front_cid not in close_matrix.columns or next_cid not in close_matrix.columns:
+                continue
+
+            dates = front_contract[front_contract == front_cid].index
+            front_close = close_matrix.loc[dates, front_cid]
+            next_close = close_matrix.loc[dates, next_cid]
+
+            valid = front_close.notna() & next_close.notna() & (front_close != 0)
+            result.loc[front_close[valid].index] = (
+                (next_close[valid] - front_close[valid]) / front_close[valid]
+            )
+
+        return result
 
     def main_contract_series(
         self,
@@ -124,8 +214,49 @@ class ContinuousContract:
             oi_matrix.loc[oi_matrix.index >= cutoff, cid] = np.nan
 
         # idxmax picks leftmost (nearest-expiry) column on ties; NaN rows → NaN
-        active = oi_matrix.idxmax(axis=1)
-        active[oi_matrix.isna().all(axis=1)] = np.nan
+        raw_active = oi_matrix.idxmax(axis=1)
+        raw_active[oi_matrix.isna().all(axis=1)] = np.nan
+
+        # Apply two-layer anti-flip filter:
+        #   1. Minimum hold period: after switching, stay for at least
+        #      roll_min_hold_days trading days before considering another switch.
+        #   2. Hysteresis: new contract OI must exceed current by
+        #      roll_hysteresis (default 20%) to trigger a switch.
+        active = raw_active.copy()
+        current = None
+        last_switch_idx = -999999
+        min_hold_bars = self.roll_min_hold_days * 240  # approx bars per trading day
+
+        for i in range(len(active)):
+            if pd.isna(raw_active.iloc[i]):
+                current = None
+                continue
+            if current is None:
+                current = raw_active.iloc[i]
+                last_switch_idx = i
+                continue
+            if raw_active.iloc[i] == current:
+                continue
+
+            # Layer 1: minimum hold period
+            bars_since_switch = i - last_switch_idx
+            if bars_since_switch < min_hold_bars:
+                active.iloc[i] = current
+                continue
+
+            # Layer 2: hysteresis check
+            ts = active.index[i]
+            oi_current = oi_matrix.loc[ts, current] if current in oi_matrix.columns else np.nan
+            oi_new = oi_matrix.loc[ts, raw_active.iloc[i]] if raw_active.iloc[i] in oi_matrix.columns else np.nan
+            if pd.notna(oi_current) and pd.notna(oi_new) and oi_current > 0:
+                if (oi_new - oi_current) / oi_current >= self.roll_hysteresis:
+                    current = raw_active.iloc[i]
+                    last_switch_idx = i
+                else:
+                    active.iloc[i] = current
+            else:
+                current = raw_active.iloc[i]
+                last_switch_idx = i
 
         return active.rename("contract")
 

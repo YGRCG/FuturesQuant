@@ -4,6 +4,7 @@ from futuresquant.factors.technical.volatility import ATR, NormATR, HistoricalVo
 from futuresquant.factors.technical.volume import VolumeRatio, OBV, VWAP, OpenInterestChange
 from futuresquant.factors.technical.futures_structure import (
     DayOfWeek, MinuteOfDay, SessionCode, DaysToExpiry, Lagged,
+    TermStructure, OvernightGap, OIAcceleration,
 )
 
 __all__ = [
@@ -12,4 +13,5 @@ __all__ = [
     "ATR", "NormATR", "HistoricalVolatility", "VolatilityRatio",
     "VolumeRatio", "OBV", "VWAP", "OpenInterestChange",
     "DayOfWeek", "MinuteOfDay", "SessionCode", "DaysToExpiry", "Lagged",
+    "TermStructure", "OvernightGap", "OIAcceleration",
 ]

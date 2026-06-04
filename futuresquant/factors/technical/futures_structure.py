@@ -138,6 +138,77 @@ class DaysToExpiry(Factor):
 # Lagged wrapper
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Futures-specific structural factors (derived from multi-contract data)
+# ---------------------------------------------------------------------------
+
+class TermStructure(Factor):
+    """
+    Term structure: (next_contract_close - front_contract_close) / front_contract_close.
+
+    Positive → contango (远期升水, holding cost high, bearish signal for longs).
+    Negative → backwardation (近期升水, supply tight, bullish signal).
+
+    This is a daily signal.  Pre-compute the column with
+    ``ContinuousContract.build_term_structure()`` and attach it to klines::
+
+        ts = cc.build_term_structure(start, end)
+        klines["term_structure"] = ts.reindex(klines.index, method="ffill")
+
+    Returns NaN for every bar when the ``term_structure`` column is absent.
+    """
+
+    name = "TermStructure"
+
+    def compute(self, klines: pd.DataFrame) -> pd.Series:
+        if "term_structure" not in klines.columns:
+            return pd.Series(np.nan, index=klines.index, name=self.name)
+        return klines["term_structure"].rename(self.name)
+
+
+class OvernightGap(Factor):
+    """
+    Overnight information gap: (today_open - prev_day_close) / prev_day_close.
+
+    Captures the price impact of news that arrived while the exchange was closed
+    (e.g. overnight crude-oil moves affecting FU).  Computed once per trading
+    day and forward-filled to every intraday bar.
+    """
+
+    name = "OvernightGap"
+
+    def compute(self, klines: pd.DataFrame) -> pd.Series:
+        daily_open = klines["open"].resample("1D").first()
+        daily_prev_close = klines["close"].resample("1D").last().shift(1)
+        daily_gap = (daily_open - daily_prev_close) / daily_prev_close
+        # Forward-fill the daily value to every minute bar of that session
+        return daily_gap.reindex(klines.index, method="ffill").rename(self.name)
+
+
+class OIAcceleration(Factor):
+    """
+    Acceleration of open-interest change.
+
+    ``OIChange_N``     = OI.pct_change(N)          — first derivative (velocity)
+    ``OIAccel_N``      = OIChange_N.diff(N)         — second derivative (acceleration)
+
+    Positive acceleration: new money flowing in at an increasing rate → trend strengthening.
+    Negative acceleration: OI growth decelerating / reversing → trend fading.
+    """
+
+    def __init__(self, period: int = 20):
+        self.period = period
+        self.name = f"OIAccel_{period}"
+
+    def compute(self, klines: pd.DataFrame) -> pd.Series:
+        oi_change = klines["open_interest"].pct_change(self.period)
+        return oi_change.diff(self.period).rename(self.name)
+
+
+# ---------------------------------------------------------------------------
+# Lagged wrapper
+# ---------------------------------------------------------------------------
+
 class Lagged(Factor):
     """
     Shift any factor's output by ``lag`` bars.
