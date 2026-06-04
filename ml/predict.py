@@ -90,7 +90,8 @@ def predict_latest(
         klines_clean = klines.copy()
 
     # 构建特征
-    X = build_features(klines, klines_clean, cfg['features'])
+    freq = cfg['data'].get('freq', '1D')
+    X = build_features(klines, klines_clean, cfg['features'], freq=freq)
     X_clean = X.dropna(how='all')
 
     # 预测

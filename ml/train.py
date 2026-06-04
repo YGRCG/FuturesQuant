@@ -36,7 +36,10 @@ if str(ROOT) not in sys.path:
 
 from futuresquant.data.loader import FuturesDataLoader
 from futuresquant.data.universe import ContinuousContract
-from ml.evaluate import oof_metrics, plot_fold_ic, plot_importance, plot_oof_nav
+from ml.evaluate import (
+    rank_ic, oof_metrics, plot_fold_ic, plot_importance, plot_oof_nav,
+    freq_to_annual_factor,
+)
 from ml.features import build_features
 from ml.labels import build_labels
 
@@ -91,17 +94,21 @@ def train(cfg: dict) -> dict:
     # 1. 加载数据
     klines, klines_clean = load_data(cfg)
 
+    freq = cfg['data'].get('freq', '1D')
+    bars_per_year = freq_to_annual_factor(freq)
+    print(f'[{_ts()}] 频率: {freq}  年化系数: {bars_per_year}')
+
     # 2. 特征 & 标签
     print(f'[{_ts()}] 构建特征 …')
-    X = build_features(klines, klines_clean, cfg['features'])
+    X = build_features(klines, klines_clean, cfg['features'], freq=freq)
 
     print(f'[{_ts()}] 构建标签 …')
-    y = build_labels(klines, cfg['labels'])
+    y = build_labels(klines, cfg['labels'], freq=freq)
 
     # 3. 对齐，去掉无法使用的行
     common = X.dropna(how='all').index.intersection(y.dropna().index)
     X, y = X.loc[common], y.loc[common]
-    print(f'[{_ts()}] 有效样本: {len(X)} 天  特征数: {X.shape[1]}')
+    print(f'[{_ts()}] 有效样本: {len(X)} bars  特征数: {X.shape[1]}')
 
     # 4. 时序交叉验证
     tcfg = cfg['training']
@@ -148,15 +155,15 @@ def train(cfg: dict) -> dict:
         importance_list.append(imp)
         models.append(model)
 
-        from ml.evaluate import rank_ic
         fold_ic = rank_ic(y_val, pd.Series(preds, index=y_val.index))
         print(f'  Fold {fold}  '
-              f'train={len(train_idx)}d  val={len(val_idx)}d  '
+              f'train={len(train_idx)}  val={len(val_idx)}  '
               f'IC={fold_ic:.4f}  '
               f'trees={model.best_iteration}')
 
     # 5. 汇总指标
-    metrics = oof_metrics(y, oof_preds, fold_indices)
+    metrics = oof_metrics(y, oof_preds, fold_indices,
+                          bars_per_year=bars_per_year)
     print(f'\n[{_ts()}] OOF 汇总:')
     for k, v in metrics.items():
         if k != 'fold_ICs':

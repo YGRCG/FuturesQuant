@@ -3,7 +3,7 @@
 
 调用方式:
     from ml.features import build_features
-    X = build_features(klines, klines_clean, cfg['features'])
+    X = build_features(klines, klines_clean, cfg['features'], freq='1D')
 """
 
 from __future__ import annotations
@@ -37,9 +37,10 @@ def build_features(
     klines_clean: pd.DataFrame,
     cfg: dict,
     factors: list | None = None,
+    freq: str = '1D',
 ) -> pd.DataFrame:
     """
-    构建日频 ML 特征矩阵。
+    构建 ML 特征矩阵。
 
     Parameters
     ----------
@@ -47,10 +48,11 @@ def build_features(
     klines_clean : 换月节点 volume/open_interest 已置 NaN 的 K 线
     cfg          : config.yaml 中的 features 段
     factors      : 因子列表，None 则使用默认全集
+    freq         : 聚合频率（'1min'=不聚合，'5min'/'15min'/'30min'/'1H'/'4H'/'1D'）
 
     Returns
     -------
-    pd.DataFrame  index=交易日，columns=特征名
+    pd.DataFrame  index=DatetimeIndex（按 freq 聚合），columns=特征名
     """
     if factors is None:
         factors = _default_factors()
@@ -59,26 +61,29 @@ def build_features(
     engine = FactorEngine(factors)
     factor_df = engine.compute(klines_clean)
 
-    # 2. 日频聚合：取每日最后一根 bar 的因子值
-    daily_f = factor_df.resample('1D').last()
+    # 2. 按 freq 聚合：取每个周期最后一根 bar 的因子值
+    if freq == '1min':
+        agg_f = factor_df
+    else:
+        agg_f = factor_df.resample(freq).last()
 
-    frames = [daily_f]
+    frames = [agg_f]
 
     # 3. 滞后特征
     for lag in cfg.get('lags', [1, 5, 20]):
-        frames.append(daily_f.shift(lag).add_suffix(f'_lag{lag}'))
+        frames.append(agg_f.shift(lag).add_suffix(f'_lag{lag}'))
 
     # 4. 滚动统计特征
     for w in cfg.get('rolling_windows', [20]):
-        frames.append(daily_f.rolling(w).mean().add_suffix(f'_rmean{w}'))
-        frames.append(daily_f.rolling(w).std().add_suffix(f'_rstd{w}'))
+        frames.append(agg_f.rolling(w).mean().add_suffix(f'_rmean{w}'))
+        frames.append(agg_f.rolling(w).std().add_suffix(f'_rstd{w}'))
 
     X = pd.concat(frames, axis=1)
     X = X.replace([np.inf, -np.inf], np.nan)
     return X
 
 
-def get_feature_names(cfg: dict, factors: list | None = None) -> list[str]:
+def get_feature_names(cfg: dict, factors: list | None = None, freq: str = '1D') -> list[str]:
     """返回 build_features 会产生的所有列名（不实际计算）。"""
     if factors is None:
         factors = _default_factors()

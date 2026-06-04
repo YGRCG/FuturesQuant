@@ -10,13 +10,14 @@ data:
   start_date: "2021-01-01"
   end_date:   "2025-04-30"
   roll_buffer: 30               # 换月节点前后清洗的 bar 数
+  freq: "1D"                    # 预测频率: 1min / 5min / 15min / 30min / 1H / 4H / 1D
 
 features:
   lags: [1, 5, 20]              # 对所有因子添加的滞后阶数
-  rolling_windows: [20]         # 添加滚动均值/标准差的窗口（天）
+  rolling_windows: [20]         # 添加滚动均值/标准差的窗口（bar 数）
 
 labels:
-  forward_days: 1               # 预测未来几个交易日的收益
+  forward_bars: 1               # 预测未来几根 bar 的收益（单位取决于 data.freq）
   label_type: regression        # regression | classification
   threshold: 0.003              # 分类标签的阈值（仅 classification 生效）
 
@@ -37,7 +38,7 @@ model:
 
 training:
   n_splits: 5                   # 时序交叉验证折数
-  gap: 1                        # 训练集与验证集之间的间隔（天），防止标签重叠
+  gap: 1                        # 训练集与验证集之间的间隔（bar 数），防止标签重叠
   # test_size: null             # 每折验证集大小（天），null=自动
   # max_train_size: null        # 每折最大训练集大小（天），null=不限
 

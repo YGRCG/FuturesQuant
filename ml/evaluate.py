@@ -19,6 +19,33 @@ import plotly.express as px
 
 
 # ---------------------------------------------------------------------------
+# 频率工具
+# ---------------------------------------------------------------------------
+
+# FU 每日交易约 240 根 1min bar（夜盘 21:00-23:00 + 日盘 09:00-15:00，扣休息）
+_FU_MINUTES_PER_DAY = 240
+_TRADING_DAYS_PER_YEAR = 252
+
+_FREQ_TO_BARS_PER_YEAR: dict[str, int] = {
+    '1min':  _TRADING_DAYS_PER_YEAR * _FU_MINUTES_PER_DAY,        # ~60480
+    '5min':  _TRADING_DAYS_PER_YEAR * (_FU_MINUTES_PER_DAY // 5), # ~12096
+    '15min': _TRADING_DAYS_PER_YEAR * (_FU_MINUTES_PER_DAY // 15),# ~4032
+    '30min': _TRADING_DAYS_PER_YEAR * (_FU_MINUTES_PER_DAY // 30),# ~2016
+    '1H':    _TRADING_DAYS_PER_YEAR * (_FU_MINUTES_PER_DAY // 60),# ~1008
+    '4H':    _TRADING_DAYS_PER_YEAR * 1,                          # FU 每天交易~4h，恰好1根4H bar
+    '1D':    _TRADING_DAYS_PER_YEAR,                               # 252
+}
+
+
+def freq_to_annual_factor(freq: str) -> int:
+    """将频率字符串转换为年化 bar 数（用于 Sharpe 等年化计算）。"""
+    if freq in _FREQ_TO_BARS_PER_YEAR:
+        return _FREQ_TO_BARS_PER_YEAR[freq]
+    raise ValueError(
+        f"不支持的频率 '{freq}'，可选: {list(_FREQ_TO_BARS_PER_YEAR.keys())}")
+
+
+# ---------------------------------------------------------------------------
 # 核心指标
 # ---------------------------------------------------------------------------
 
@@ -35,6 +62,7 @@ def oof_metrics(
     y_true: pd.Series,
     y_pred: pd.Series,
     fold_indices: list[tuple[np.ndarray, np.ndarray]] | None = None,
+    bars_per_year: int = 252,
 ) -> dict:
     """
     汇总 OOF 评估指标。
@@ -44,6 +72,7 @@ def oof_metrics(
     y_true        : 真实标签
     y_pred        : OOF 预测值（与 y_true 同索引）
     fold_indices  : [(train_idx, val_idx), ...] 可选，用于逐折 IC 统计
+    bars_per_year : 年化系数（日频=252，小时频=1008 等）
 
     Returns
     -------
@@ -62,7 +91,8 @@ def oof_metrics(
             if len(fold_ics) > 1 else np.nan)
     ic_pos = np.mean([v > 0 for v in fold_ics]) if fold_ics else np.nan
 
-    sharpe, mdd = sharpe_from_pred(y_true, y_pred)
+    sharpe, mdd = sharpe_from_pred(y_true, y_pred,
+                                   bars_per_year=bars_per_year)
 
     return {
         'IC':         round(ic_val, 4),
@@ -78,11 +108,13 @@ def sharpe_from_pred(
     y_true: pd.Series,
     y_pred: pd.Series,
     n_quantiles: int = 5,
+    bars_per_year: int = 252,
 ) -> tuple[float, float]:
     """
     根据预测信号构造多空组合，计算年化 Sharpe 和最大回撤。
 
     做多：预测值 >= 80th 百分位；做空：<= 20th 百分位。
+    bars_per_year 控制年化系数（日频=252，小时频=1008 等）。
     """
     df = pd.concat([y_true, y_pred], axis=1).dropna()
     df.columns = ['ret', 'pred']
@@ -98,7 +130,7 @@ def sharpe_from_pred(
     if ls_ret.std() == 0 or len(ls_ret) < 5:
         return np.nan, np.nan
 
-    sharpe = ls_ret.mean() / ls_ret.std() * np.sqrt(252)
+    sharpe = ls_ret.mean() / ls_ret.std() * np.sqrt(bars_per_year)
     nav = (1 + ls_ret).cumprod()
     mdd = ((nav.cummax() - nav) / nav.cummax()).max()
     return sharpe, mdd
