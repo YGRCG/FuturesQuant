@@ -15,6 +15,7 @@ data:
 features:
   lags: [1, 5, 20]              # 对所有因子添加的滞后阶数
   rolling_windows: [20]         # 添加滚动均值/标准差的窗口（bar 数）
+  selected_features_file: null  # 筛选特征文件路径（如 ml/selected_features_15min_1.yaml），null=用全量
 
 labels:
   forward_bars: 1               # 预测未来几根 bar 的收益（单位取决于 data.freq）

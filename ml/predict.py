@@ -92,6 +92,15 @@ def predict_latest(
     # 构建特征
     freq = cfg['data'].get('freq', '1D')
     X = build_features(klines, klines_clean, cfg['features'], freq=freq)
+
+    # 加载筛选特征（如有配置）
+    sel_file = cfg['features'].get('selected_features_file')
+    if sel_file:
+        import yaml as _yaml
+        with open(ROOT / sel_file, encoding='utf-8') as f:
+            sel_cols = _yaml.unsafe_load(f)['selected_features']
+        X = X[[c for c in sel_cols if c in X.columns]]
+
     X_clean = X.dropna(how='all')
 
     # 预测

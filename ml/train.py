@@ -102,6 +102,20 @@ def train(cfg: dict) -> dict:
     print(f'[{_ts()}] 构建特征 …')
     X = build_features(klines, klines_clean, cfg['features'], freq=freq)
 
+    # 2.5 加载筛选特征（如有配置）
+    sel_file = cfg['features'].get('selected_features_file')
+    if sel_file:
+        sel_path = ROOT / sel_file
+        with open(sel_path, encoding='utf-8') as f:
+            sel_cfg = yaml.unsafe_load(f)
+        sel_cols = sel_cfg['selected_features']
+        missing = [c for c in sel_cols if c not in X.columns]
+        if missing:
+            print(f'[{_ts()}] 警告: {len(missing)} 个特征不在当前矩阵中: {missing[:5]}...')
+        sel_cols = [c for c in sel_cols if c in X.columns]
+        X = X[sel_cols]
+        print(f'[{_ts()}] 已加载筛选特征: {sel_path.name}  ({len(sel_cols)} 个)')
+
     print(f'[{_ts()}] 构建标签 …')
     y = build_labels(klines, cfg['labels'], freq=freq)
 
