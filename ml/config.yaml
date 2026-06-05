@@ -10,7 +10,7 @@ data:
   start_date: "2021-01-01"
   end_date:   "2025-04-30"
   roll_buffer: 30               # 换月节点前后清洗的 bar 数
-  freq: "1D"                    # 预测频率: 1min / 5min / 15min / 30min / 1H / 4H / 1D
+  freq: "5min"                    # 预测频率: 1min / 5min / 15min / 30min / 1H / 4H / 1D
 
 features:
   lags: [1, 5, 20]              # 对所有因子添加的滞后阶数
@@ -18,8 +18,11 @@ features:
 
 labels:
   forward_bars: 1               # 预测未来几根 bar 的收益（单位取决于 data.freq）
-  label_type: regression        # regression | classification
+  label_type: regression        # regression | classification | triple_barrier
   threshold: 0.003              # 分类标签的阈值（仅 classification 生效）
+  # ── triple_barrier 专用参数 ──
+  # atr_period: 14              # ATR 计算周期
+  # atr_multiplier: 1.5         # 止盈止损 = close ± multiplier × ATR
 
 model:
   type: lightgbm
