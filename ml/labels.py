@@ -17,13 +17,7 @@ import numpy as np
 import pandas as pd
 from numba import njit
 
-
-def _normalize_freq(freq: str) -> str:
-    """将 freq 中的大写时间单位转为 pandas 2.x 要求的小写（'1H'->'1h' 等）。"""
-    for old, new in [('min', 'min'), ('H', 'h'), ('D', 'D'), ('T', 'min')]:
-        if freq.endswith(old):
-            return freq[:-len(old)] + new
-    return freq
+from ml.resample import session_resample_last, session_resample_ohlc
 
 
 # ---------------------------------------------------------------------------
@@ -123,14 +117,7 @@ def _build_triple_barrier(
     atr_period = cfg.get('atr_period', 14)
     atr_mult = cfg.get('atr_multiplier', 1.5)
 
-    if freq == '1min':
-        ohlc = klines[['open', 'high', 'low', 'close']].copy()
-    else:
-        ohlc = klines[['open', 'high', 'low', 'close']].resample(freq).agg({
-            'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last',
-        })
-
-    ohlc = ohlc.dropna(subset=['close'])
+    ohlc = session_resample_ohlc(klines, freq)
 
     atr = _compute_atr(ohlc['high'], ohlc['low'], ohlc['close'], atr_period)
     upper_price = ohlc['close'] + atr_mult * atr
@@ -169,7 +156,6 @@ def build_labels(klines: pd.DataFrame, cfg: dict, freq: str = '1D') -> pd.Series
                classification  : -1 / 0 / 1（固定阈值三分类）
                triple_barrier  : -1 / 0 / 1（触止损 / 超时 / 触止盈）
     """
-    freq = _normalize_freq(freq)
     label_type = cfg.get('label_type', 'regression')
 
     if label_type == 'triple_barrier':
@@ -177,10 +163,7 @@ def build_labels(klines: pd.DataFrame, cfg: dict, freq: str = '1D') -> pd.Series
 
     forward_bars = cfg.get('forward_bars', cfg.get('forward_days', 1))
 
-    if freq == '1min':
-        close = klines['close']
-    else:
-        close = klines['close'].resample(freq).last()
+    close = session_resample_last(klines[['close']], freq)['close']
 
     forward_ret = close.pct_change(forward_bars).shift(-forward_bars)
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from ml.resample import session_resample_last
 from futuresquant.factors.engine import FactorEngine
 from futuresquant.factors.technical import (
     ROC, MOM, RSI, BollingerBand, TSMomentum,
@@ -61,11 +62,8 @@ def build_features(
     engine = FactorEngine(factors)
     factor_df = engine.compute(klines_clean)
 
-    # 2. 按 freq 聚合：取每个周期最后一根 bar 的因子值
-    if freq == '1min':
-        agg_f = factor_df
-    else:
-        agg_f = factor_df.resample(freq).last()
+    # 2. 按 freq 聚合（session-aware，不跨交易时段）
+    agg_f = session_resample_last(factor_df, freq)
 
     frames = [agg_f]
 
