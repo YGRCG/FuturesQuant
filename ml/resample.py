@@ -18,6 +18,14 @@ import numpy as np
 import pandas as pd
 
 
+def _normalize_freq(freq: str) -> str:
+    """将 freq 中的大写时间单位转为 pandas 2.x 要求的小写（'1H'->'1h' 等）。"""
+    for old, new in [('min', 'min'), ('H', 'h'), ('D', 'D'), ('T', 'min')]:
+        if freq.endswith(old):
+            return freq[:-len(old)] + new
+    return freq
+
+
 # FU/SHFE 默认时段（与 SessionCode 因子一致）
 DEFAULT_SESSIONS = [
     (datetime.time(21, 0),  datetime.time(23, 59)),  # 夜盘
@@ -59,6 +67,7 @@ def session_resample_last(
     对于 '1D' 频率，直接用标准 resample（日级别没有跨时段问题）。
     对于 '1min' 频率，不做聚合直接返回。
     """
+    freq = _normalize_freq(freq)
     if freq == '1min':
         return df
     if freq in ('1D', '1d'):
@@ -86,6 +95,7 @@ def session_resample_ohlc(
     Session-aware OHLC resample。
     返回 DataFrame 含 open/high/low/close 列。
     """
+    freq = _normalize_freq(freq)
     if freq == '1min':
         return klines[['open', 'high', 'low', 'close']].copy()
     if freq in ('1D', '1d'):

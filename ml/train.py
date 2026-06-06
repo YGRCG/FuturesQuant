@@ -42,6 +42,7 @@ from ml.evaluate import (
 )
 from ml.features import build_features
 from ml.labels import build_labels
+from ml.resample import session_resample_last
 
 
 # ---------------------------------------------------------------------------
@@ -117,11 +118,21 @@ def train(cfg: dict) -> dict:
         print(f'[{_ts()}] 已加载筛选特征: {sel_path.name}  ({len(sel_cols)} 个)')
 
     print(f'[{_ts()}] 构建标签 …')
+    label_type = cfg['labels'].get('label_type', 'regression')
     y = build_labels(klines, cfg['labels'], freq=freq)
+
+    # triple_barrier 时需要真实收益率来计算 Sharpe（标签是 -1/0/1 不是收益率）
+    y_ret = None
+    if label_type == 'triple_barrier':
+        forward_bars = cfg['labels'].get('forward_bars', cfg['labels'].get('forward_days', 1))
+        close = session_resample_last(klines[['close']], freq)['close']
+        y_ret = close.pct_change(forward_bars).shift(-forward_bars).rename('ret')
 
     # 3. 对齐，去掉无法使用的行
     common = X.dropna(how='all').index.intersection(y.dropna().index)
     X, y = X.loc[common], y.loc[common]
+    if y_ret is not None:
+        y_ret = y_ret.loc[common]
     print(f'[{_ts()}] 有效样本: {len(X)} bars  特征数: {X.shape[1]}')
 
     # 4. 时序交叉验证
@@ -139,15 +150,30 @@ def train(cfg: dict) -> dict:
     models = []
 
     mcfg = cfg['model']
-    params = mcfg['params']
+    params = dict(mcfg['params'])
+
+    # triple_barrier: 自动切换为 multiclass 分类
+    if label_type == 'triple_barrier':
+        n_classes = int(y.nunique())
+        if params.get('objective') == 'regression':
+            params['objective'] = 'multiclass'
+            params['num_class'] = n_classes
+            params['metric'] = 'multi_logloss'
+            print(f'[{_ts()}] 自动切换: objective=multiclass  num_class={n_classes}')
+        # 标签映射: -1/0/1 → 0/1/2（LightGBM multiclass 要求从 0 开始）
+        label_map = {v: i for i, v in enumerate(sorted(y.unique()))}
+        y_train_label = y.map(label_map)
+    else:
+        y_train_label = y
 
     print(f'[{_ts()}] 开始 {tcfg["n_splits"]} 折时序交叉验证 …')
     for fold, (train_idx, val_idx) in enumerate(tscv.split(X), start=1):
         X_tr, X_val = X.iloc[train_idx], X.iloc[val_idx]
-        y_tr, y_val = y.iloc[train_idx], y.iloc[val_idx]
+        y_tr = y_train_label.iloc[train_idx]
+        y_val_label = y_train_label.iloc[val_idx]
 
         dtrain = lgb.Dataset(X_tr, label=y_tr, free_raw_data=False)
-        dval   = lgb.Dataset(X_val, label=y_val, reference=dtrain, free_raw_data=False)
+        dval   = lgb.Dataset(X_val, label=y_val_label, reference=dtrain, free_raw_data=False)
 
         model = lgb.train(
             params,
@@ -156,11 +182,21 @@ def train(cfg: dict) -> dict:
             valid_sets=[dval],
             callbacks=[
                 lgb.early_stopping(mcfg.get('early_stopping_rounds', 50), verbose=False),
-                lgb.log_evaluation(0),   # 静默
+                lgb.log_evaluation(0),
             ],
         )
 
-        preds = model.predict(X_val)
+        preds_raw = model.predict(X_val)
+
+        # multiclass: 将概率转为连续信号 P(做多) - P(做空)
+        if label_type == 'triple_barrier' and preds_raw.ndim == 2:
+            # label_map: {-1:0, 0:1, 1:2}  → col 2 = 做多概率, col 0 = 做空概率
+            idx_long = label_map[1]
+            idx_short = label_map[-1]
+            preds = preds_raw[:, idx_long] - preds_raw[:, idx_short]
+        else:
+            preds = preds_raw
+
         oof_preds.iloc[val_idx] = preds
         fold_indices.append((train_idx, val_idx))
 
@@ -169,7 +205,8 @@ def train(cfg: dict) -> dict:
         importance_list.append(imp)
         models.append(model)
 
-        fold_ic = rank_ic(y_val, pd.Series(preds, index=y_val.index))
+        y_val_orig = y.iloc[val_idx]
+        fold_ic = rank_ic(y_val_orig, pd.Series(preds, index=y_val_orig.index))
         print(f'  Fold {fold}  '
               f'train={len(train_idx)}  val={len(val_idx)}  '
               f'IC={fold_ic:.4f}  '
@@ -177,7 +214,7 @@ def train(cfg: dict) -> dict:
 
     # 5. 汇总指标
     metrics = oof_metrics(y, oof_preds, fold_indices,
-                          bars_per_year=bars_per_year)
+                          bars_per_year=bars_per_year, y_ret=y_ret)
     print(f'\n[{_ts()}] OOF 汇总:')
     for k, v in metrics.items():
         if k != 'fold_ICs':
@@ -206,7 +243,7 @@ def train(cfg: dict) -> dict:
         artifacts / f'fold_ic_{timestamp}.html')
     plot_importance(imp_mean).write_html(
         artifacts / f'importance_{timestamp}.html')
-    plot_oof_nav(y, oof_preds).write_html(
+    plot_oof_nav(y, oof_preds, y_ret=y_ret).write_html(
         artifacts / f'oof_nav_{timestamp}.html')
 
     print(f'[{_ts()}] 产出已保存至 {artifacts}/')

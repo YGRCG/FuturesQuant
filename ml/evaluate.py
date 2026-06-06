@@ -63,16 +63,19 @@ def oof_metrics(
     y_pred: pd.Series,
     fold_indices: list[tuple[np.ndarray, np.ndarray]] | None = None,
     bars_per_year: int = 252,
+    y_ret: pd.Series | None = None,
 ) -> dict:
     """
     汇总 OOF 评估指标。
 
     Parameters
     ----------
-    y_true        : 真实标签
+    y_true        : 真实标签（regression 时为收益率，triple_barrier 时为 -1/0/1）
     y_pred        : OOF 预测值（与 y_true 同索引）
     fold_indices  : [(train_idx, val_idx), ...] 可选，用于逐折 IC 统计
     bars_per_year : 年化系数（日频=252，小时频=1008 等）
+    y_ret         : 真实收益率（triple_barrier 时必须传入，用于 Sharpe 计算；
+                    regression 时可不传，默认用 y_true）
 
     Returns
     -------
@@ -91,7 +94,8 @@ def oof_metrics(
             if len(fold_ics) > 1 else np.nan)
     ic_pos = np.mean([v > 0 for v in fold_ics]) if fold_ics else np.nan
 
-    sharpe, mdd = sharpe_from_pred(y_true, y_pred,
+    ret_for_sharpe = y_ret if y_ret is not None else y_true
+    sharpe, mdd = sharpe_from_pred(ret_for_sharpe, y_pred,
                                    bars_per_year=bars_per_year)
 
     return {
@@ -153,10 +157,14 @@ def plot_importance(importance: pd.Series, top_n: int = 30) -> go.Figure:
     return fig
 
 
-def plot_oof_nav(y_true: pd.Series, y_pred: pd.Series) -> go.Figure:
-    """OOF 多空净值曲线 vs 买入持有。"""
-    df = pd.concat([y_true, y_pred], axis=1).dropna()
-    df.columns = ['ret', 'pred']
+def plot_oof_nav(
+    y_true: pd.Series,
+    y_pred: pd.Series,
+    y_ret: pd.Series | None = None,
+) -> go.Figure:
+    """OOF 多空净值曲线 vs 买入持有。y_ret 为真实收益率（triple_barrier 时传入）。"""
+    ret = y_ret if y_ret is not None else y_true
+    df = pd.concat([ret.rename('ret'), y_pred.rename('pred')], axis=1).dropna()
 
     thr = 0.2
     df['signal'] = 0

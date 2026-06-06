@@ -108,31 +108,66 @@ def _build_triple_barrier(
     """
     构建 Triple Barrier 标签。
 
+    ATR 在聚合频率（如 15min）上计算以保持阈值量级，
+    但 scan 在 1min K 线上进行以精确判断先触碰止盈还是止损。
+
     cfg 可选参数:
-        forward_bars   : 时间障碍（最长持仓 bar 数），默认 20
-        atr_period     : ATR 计算周期，默认 14
-        atr_multiplier : 止盈止损 = close ± multiplier * ATR，默认 1.5
+        forward_bars   : 时间障碍（聚合频率的 bar 数），默认 20
+        atr_period     : ATR 计算周期（聚合频率），默认 14
+        tp_multiplier  : 止盈 = close + tp_multiplier * ATR，默认 2.0
+        sl_multiplier  : 止损 = close - sl_multiplier * ATR，默认 1.0
+        atr_multiplier : 兼容旧配置，同时设置 tp/sl（优先级低于 tp/sl_multiplier）
     """
     forward_bars = cfg.get('forward_bars', cfg.get('forward_days', 20))
+    if forward_bars < 2:
+        raise ValueError(
+            f"triple_barrier 需要 forward_bars >= 2（当前={forward_bars}），"
+            f"否则扫描窗口为空，所有标签为 NaN")
     atr_period = cfg.get('atr_period', 14)
-    atr_mult = cfg.get('atr_multiplier', 1.5)
+    atr_mult_default = cfg.get('atr_multiplier', 1.5)
+    tp_mult = cfg.get('tp_multiplier', atr_mult_default)
+    sl_mult = cfg.get('sl_multiplier', atr_mult_default)
 
+    # 1. 在聚合频率上计算 ATR 和止盈止损价位
     ohlc = session_resample_ohlc(klines, freq)
-
     atr = _compute_atr(ohlc['high'], ohlc['low'], ohlc['close'], atr_period)
-    upper_price = ohlc['close'] + atr_mult * atr
-    lower_price = ohlc['close'] - atr_mult * atr
+    entry_price = ohlc['close']
+    upper_price = entry_price + tp_mult * atr
+    lower_price = entry_price - sl_mult * atr
 
-    labels = _triple_barrier_scan(
-        ohlc['close'].values,
-        ohlc['high'].values,
-        ohlc['low'].values,
-        upper_price.values,
-        lower_price.values,
-        forward_bars,
+    if freq == '1min':
+        # 不需要映射，直接在 1min 上 scan
+        labels = _triple_barrier_scan(
+            entry_price.values, klines['high'].values, klines['low'].values,
+            upper_price.values, lower_price.values, forward_bars,
+        )
+        return pd.Series(labels, index=ohlc.index, name='label')
+
+    # 2. 将止盈止损价位映射到 1min 索引（ffill：同一聚合窗口内价位不变）
+    idx_1min = klines.index
+    entry_1min = entry_price.reindex(idx_1min).ffill()
+    upper_1min = upper_price.reindex(idx_1min).ffill()
+    lower_1min = lower_price.reindex(idx_1min).ffill()
+
+    # 3. 计算聚合频率 forward_bars 对应多少根 1min bar
+    n_agg = len(ohlc)
+    n_1min = len(klines)
+    bars_ratio = max(1, round(n_1min / n_agg))
+    max_bars_1min = forward_bars * bars_ratio
+
+    # 4. 在 1min 上 scan（精确判断先触碰哪条线）
+    labels_1min = _triple_barrier_scan(
+        entry_1min.values,
+        klines['high'].values,
+        klines['low'].values,
+        upper_1min.values,
+        lower_1min.values,
+        max_bars_1min,
     )
 
-    return pd.Series(labels, index=ohlc.index, name='label')
+    # 5. 只保留聚合频率时间点的标签（即决策点）
+    labels_full = pd.Series(labels_1min, index=idx_1min, name='label')
+    return labels_full.reindex(ohlc.index)
 
 
 # ---------------------------------------------------------------------------
