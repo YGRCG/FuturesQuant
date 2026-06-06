@@ -85,11 +85,19 @@ def run_ml_backtest(
 
     # 3. 生成全历史预测信号
     print(f'[{_ts()}] 生成预测信号 ({len(X_clean)} bars) …')
-    signal_agg = pd.Series(
-        model.predict(X_clean),
-        index=X_clean.index,
-        name='ml_signal',
-    )
+    preds_raw = model.predict(X_clean)
+
+    # multiclass 模型返回 (n, n_classes) 概率矩阵，转为连续信号
+    if preds_raw.ndim == 2:
+        # 假设 label_map: {-1:0, 0:1, 1:2} → P(做多) - P(做空)
+        signal_agg = pd.Series(
+            preds_raw[:, -1] - preds_raw[:, 0],
+            index=X_clean.index, name='ml_signal',
+        )
+    else:
+        signal_agg = pd.Series(
+            preds_raw, index=X_clean.index, name='ml_signal',
+        )
 
     # 4. 将聚合频率信号映射到 1min K 线索引
     if freq != '1min':

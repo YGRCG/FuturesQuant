@@ -121,18 +121,14 @@ def train(cfg: dict) -> dict:
     label_type = cfg['labels'].get('label_type', 'regression')
     y = build_labels(klines, cfg['labels'], freq=freq)
 
-    # triple_barrier 时需要真实收益率来计算 Sharpe（标签是 -1/0/1 不是收益率）
-    y_ret = None
-    if label_type == 'triple_barrier':
-        forward_bars = cfg['labels'].get('forward_bars', cfg['labels'].get('forward_days', 1))
-        close = session_resample_last(klines[['close']], freq)['close']
-        y_ret = close.pct_change(forward_bars).shift(-forward_bars).rename('ret')
+    # 1-bar 收益率：用于 Sharpe/NAV 计算（避免 forward_bars>1 时重叠收益被重复计算）
+    close = session_resample_last(klines[['close']], freq)['close']
+    y_ret = close.pct_change(1).shift(-1).rename('ret')
 
     # 3. 对齐，去掉无法使用的行
     common = X.dropna(how='all').index.intersection(y.dropna().index)
     X, y = X.loc[common], y.loc[common]
-    if y_ret is not None:
-        y_ret = y_ret.loc[common]
+    y_ret = y_ret.loc[common]
     print(f'[{_ts()}] 有效样本: {len(X)} bars  特征数: {X.shape[1]}')
 
     # 4. 时序交叉验证

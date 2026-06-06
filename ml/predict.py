@@ -103,7 +103,12 @@ def predict_latest(
     X_clean = X.dropna(how='all')
 
     # 预测
-    preds = pd.Series(model.predict(X_clean), index=X_clean.index, name='pred')
+    preds_raw = model.predict(X_clean)
+    if preds_raw.ndim == 2:
+        preds = pd.Series(preds_raw[:, -1] - preds_raw[:, 0],
+                          index=X_clean.index, name='pred')
+    else:
+        preds = pd.Series(preds_raw, index=X_clean.index, name='pred')
 
     # 信号强度：在全历史中的百分位排名（0~100）
     strength = preds.rank(pct=True) * 100
