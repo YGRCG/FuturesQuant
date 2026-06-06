@@ -1,0 +1,67 @@
+selected_features:
+- ADX_14_rstd20
+- ATR_14_rmean20
+- ATR_14_rstd20
+- BB_pct_20_2.0_rstd20
+- DayOfWeek
+- DaysToExpiry
+- HV_240
+- OBV_20_rmean20
+- OBV_20_rstd20
+- OIChange_20_lag20
+- OIChange_20_lag5
+- OIChange_20_rmean20
+- OIChange_20_rstd20
+- SessionCode_rmean20
+- SessionCode_rstd20
+- VWAPdev_60_rstd20
+- VolRatio_20_120_rstd20
+- VolRatio_20_rmean20
+n_features: 18
+pipeline_config:
+  ic_threshold: 0.01
+  p_threshold: 0.2
+  corr_threshold: 0.7
+  importance_quantile: 0.5
+metrics_comparison:
+  full:
+    n_features: 126
+    IC: !!python/object/apply:numpy._core.multiarray.scalar
+    - &id001 !!python/object/apply:numpy.dtype
+      args:
+      - f8
+      - false
+      - true
+      state: !!python/tuple
+      - 3
+      - <
+      - null
+      - null
+      - null
+      - -1
+      - -1
+      - 0
+    - !!binary |
+      rthfdk8elj8=
+    ICIR: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      MCqpE9BE6D8=
+    Sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      eekmMQis8j8=
+  selected:
+    n_features: 18
+    IC: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      +n5qvHSTWD8=
+    ICIR: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      p3nHKTqS2z8=
+    Sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      NV66SQwC2z8=

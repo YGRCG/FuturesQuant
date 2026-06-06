@@ -17,10 +17,10 @@ data:
 features:
   lags: [1, 5, 20]              # 对所有因子添加的滞后阶数
   rolling_windows: [20]         # 添加滚动均值/标准差的窗口（bar 数）
-  selected_features_file: null  # 筛选特征文件路径（如 ml/selected_features_15min_1.yaml），null=用全量
+  selected_features_file: ml/selected_features_5min_forward_5.yaml   # 筛选特征文件路径（如 ml/selected_features_15min_1.yaml），null=用全量
 
 labels:
-  forward_bars: 12               # 预测未来几根 bar 的收益（单位取决于 data.freq）
+  forward_bars: 5              # 预测未来几根 bar 的收益（单位取决于 data.freq）
   label_type: regression        # regression | classification | triple_barrier
   threshold: 0.003              # 分类标签的阈值（仅 classification 生效）
   # ── triple_barrier 专用参数 ──
@@ -46,7 +46,7 @@ model:
 
 training:
   n_splits: 5                   # 时序交叉验证折数
-  gap: 12         #必须大于等于forward_bars               # 训练集与验证集之间的间隔（bar 数），防止标签重叠，
+  gap: 5         #必须大于等于forward_bars               # 训练集与验证集之间的间隔（bar 数），防止标签重叠，
   # test_size: null             # 每折验证集大小（天），null=自动
   # max_train_size: null        # 每折最大训练集大小（天），null=不限
 

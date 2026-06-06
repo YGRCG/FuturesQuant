@@ -1,0 +1,107 @@
+selected_features:
+- ADX_14_lag20
+- ADX_14_rmean20
+- ADX_14_rstd20
+- ATR_14
+- ATR_14_rmean20
+- ATR_14_rstd20
+- BB_pct_20_2.0
+- BB_pct_20_2.0_rmean20
+- BB_pct_20_2.0_rstd20
+- Channel_20_rmean20
+- Channel_20_rstd20
+- DayOfWeek_lag5
+- DayOfWeek_rmean20
+- DayOfWeek_rstd20
+- DaysToExpiry_rmean20
+- DaysToExpiry_rstd20
+- HV_240_lag20
+- HV_240_rmean20
+- HV_240_rstd20
+- MACD_12_26_9
+- MACD_12_26_9_rmean20
+- MACD_12_26_9_rstd20
+- MACross_ema_5_20_rmean20
+- MACross_ema_5_20_rstd20
+- MOM_20_lag1
+- MOM_20_rmean20
+- MOM_20_rstd20
+- MinuteOfDay_lag20
+- MinuteOfDay_rmean20
+- MinuteOfDay_rstd20
+- NATR_14_rmean20
+- NATR_14_rstd20
+- OBV_20_rmean20
+- OBV_20_rstd20
+- OIChange_20
+- OIChange_20_lag1
+- OIChange_20_rmean20
+- OIChange_20_rstd20
+- ROC_20_rmean20
+- ROC_20_rstd20
+- RSI_14_rmean20
+- RSI_14_rstd20
+- SessionCode_lag1
+- SessionCode_rmean20
+- SessionCode_rstd20
+- TSMom_5_20
+- TSMom_5_20_rmean20
+- TSMom_5_20_rstd20
+- VWAPdev_60_lag20
+- VWAPdev_60_rmean20
+- VWAPdev_60_rstd20
+- VolRatio_20
+- VolRatio_20_120_lag1
+- VolRatio_20_120_rmean20
+- VolRatio_20_120_rstd20
+- VolRatio_20_lag20
+- VolRatio_20_rmean20
+- VolRatio_20_rstd20
+n_features: 58
+pipeline_config:
+  ic_threshold: 0.01
+  p_threshold: 0.2
+  corr_threshold: 0.7
+  importance_quantile: 0.5
+metrics_comparison:
+  full:
+    n_features: 126
+    IC: !!python/object/apply:numpy._core.multiarray.scalar
+    - &id001 !!python/object/apply:numpy.dtype
+      args:
+      - f8
+      - false
+      - true
+      state: !!python/tuple
+      - 3
+      - <
+      - null
+      - null
+      - null
+      - -1
+      - -1
+      - 0
+    - !!binary |
+      SFD8GHPXgj8=
+    ICIR: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      FmpN845TAkA=
+    Sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      CtejcD0Kx78=
+  selected:
+    n_features: 58
+    IC: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      nzws1JrmfT8=
+    ICIR: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      BoGVQ4ts6z8=
+    Sharpe: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      bxKDwMqh1T8=
