@@ -169,9 +169,10 @@ class SimAccount:
         else:
             # Release margin at avg entry price and book realised PnL
             margin_released = fill.volume * pos.avg_price * spec.multiplier * spec.margin_ratio
-            if fill.direction == Direction.LONG:
+            # direction here is the closing side (SHORT=closing long, LONG=closing short)
+            if fill.direction == Direction.SHORT:   # closing a long position
                 realised_pnl = fill.volume * (fill.price - pos.avg_price) * spec.multiplier
-            else:
+            else:                                   # closing a short position
                 realised_pnl = fill.volume * (pos.avg_price - fill.price) * spec.multiplier
             self._cash += margin_released + realised_pnl
 

@@ -201,7 +201,7 @@ class OIAcceleration(Factor):
         self.name = f"OIAccel_{period}"
 
     def compute(self, klines: pd.DataFrame) -> pd.Series:
-        oi_change = klines["open_interest"].pct_change(self.period)
+        oi_change = klines["open_interest"].pct_change(self.period, fill_method=None)
         return oi_change.diff(self.period).rename(self.name)
 
 

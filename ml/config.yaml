@@ -12,15 +12,16 @@ data:
   # start_date: "2025-05-01"
   # end_date:   "2026-05-31"
   roll_buffer: 30               # 换月节点前后清洗的 bar 数
-  freq: "5min"                    # 预测频率: 1min / 5min / 15min / 30min / 1H / 4H / 1D
+  freq: "30min"                    # 预测频率: 1min / 5min / 15min / 30min / 1H / 4H / 1D
 
 features:
-  lags: [1, 5, 20]              # 对所有因子添加的滞后阶数
-  rolling_windows: [20]         # 添加滚动均值/标准差的窗口（bar 数）
-  selected_features_file: ml/selected_features_5min_forward_5.yaml   # 筛选特征文件路径（如 ml/selected_features_15min_1.yaml），null=用全量
+  lags: [5, 10]              # 对所有因子添加的滞后阶数
+  rolling_windows: [ 10, 20, 60, 120]         # 添加滚动均值/标准差的窗口（bar 数）
+  selected_features_file: null
+  # selected_features_file: ml/selected_features_30min_forward_8.yaml   # 运行 06 notebook 后自动生成；命名规则: selected_features_{freq}_forward_{forward_bars}.yaml
 
 labels:
-  forward_bars: 5              # 预测未来几根 bar 的收益（单位取决于 data.freq）
+  forward_bars: 8               # 预测未来几根 bar 的收益（单位取决于 data.freq）
   label_type: regression        # regression | classification | triple_barrier
   threshold: 0.003              # 分类标签的阈值（仅 classification 生效）
   # ── triple_barrier 专用参数 ──
@@ -35,20 +36,26 @@ model:
     objective: regression
     metric: rmse
     num_leaves: 31
-    learning_rate: 0.05
-    feature_fraction: 0.8
+    learning_rate: 0.02
+    feature_fraction: 0.6
     bagging_fraction: 0.8
     bagging_freq: 5
-    min_child_samples: 20
+    min_child_samples: 50
+    lambda_l1: 0.05
+    lambda_l2: 0.5
     verbose: -1
   num_boost_round: 500
   early_stopping_rounds: 50
 
 training:
   n_splits: 5                   # 时序交叉验证折数
-  gap: 5         #必须大于等于forward_bars               # 训练集与验证集之间的间隔（bar 数），防止标签重叠，
+  gap: 9        #必须大于forward_bars               # 训练集与验证集之间的间隔（bar 数），防止标签重叠，
   # test_size: null             # 每折验证集大小（天），null=自动
   # max_train_size: null        # 每折最大训练集大小（天），null=不限
 
 output:
   artifacts_dir: ml/artifacts   # 模型、OOF 预测、指标的保存路径
+
+backtest:
+  start_date: "2025-05-01"      # OOS 回测起始日（与 data 训练期分离，避免 in-sample 回测）
+  end_date:   "2026-05-31"

@@ -30,6 +30,7 @@ if str(ROOT) not in sys.path:
 from futuresquant.backtest.engine import BacktestEngine, BacktestConfig
 from futuresquant.strategy.examples.ml_strategy import MLStrategy
 from ml.features import build_features
+from ml.resample import session_resample_last, session_resample_ohlc
 from ml.train import load_data, load_config
 
 
@@ -65,7 +66,14 @@ def run_ml_backtest(
     model = joblib.load(model_path)
     print(f'[{_ts()}] 模型: {model_path.name}')
 
-    # 1. 加载数据
+    # 1. 加载数据（回测时段优先用 backtest 节，避免与训练期混用）
+    bt_section = cfg.get('backtest', {})
+    if bt_section:
+        data_cfg = dict(cfg['data'])
+        data_cfg['start_date'] = bt_section.get('start_date', data_cfg['start_date'])
+        data_cfg['end_date'] = bt_section.get('end_date', data_cfg['end_date'])
+        cfg = {**cfg, 'data': data_cfg}
+        print(f'[{_ts()}] 回测时段: {data_cfg["start_date"]} ~ {data_cfg["end_date"]}')
     klines, klines_clean = load_data(cfg)
     freq = cfg['data'].get('freq', '1D')
 
@@ -81,7 +89,8 @@ def run_ml_backtest(
         X = X[[c for c in sel_cols if c in X.columns]]
         print(f'[{_ts()}] 筛选特征: {len(X.columns)} 个')
 
-    X_clean = X.dropna(how='all')
+    valid_mask = X.notna().sum(axis=1) > (X.shape[1] // 2)
+    X_clean = X[valid_mask]
 
     # 3. 生成全历史预测信号
     print(f'[{_ts()}] 生成预测信号 ({len(X_clean)} bars) …')
@@ -99,17 +108,20 @@ def run_ml_backtest(
             preds_raw, index=X_clean.index, name='ml_signal',
         )
 
-    # 4. 将聚合频率信号映射到 1min K 线索引
-    if freq != '1min':
-        signal_1min = signal_agg.reindex(klines.index).ffill()
+    # 4. 回测在聚合频率的 K 线上运行（session-aware，不跨交易时段）
+    if freq == '1min':
+        klines_bt = klines
+        signal_bt = signal_agg
     else:
-        signal_1min = signal_agg
+        klines_bt = session_resample_ohlc(klines, freq)
+        # 确保 signal 与 klines_bt 的 index 完全对齐
+        signal_bt = signal_agg.reindex(klines_bt.index)
 
-    print(f'[{_ts()}] 信号映射到 1min: {signal_1min.notna().sum():,} bars')
+    print(f'[{_ts()}] 回测 K 线: {len(klines_bt):,} bars (freq={freq})')
 
     # 5. 构造策略 & 运行回测
     strategy = MLStrategy(
-        signal=signal_1min,
+        signal=signal_bt,
         entry_quantile=entry_quantile,
         exit_quantile=exit_quantile,
         rolling_window=rolling_window,
@@ -123,7 +135,7 @@ def run_ml_backtest(
     )
 
     print(f'[{_ts()}] 运行回测 …')
-    result = BacktestEngine(strategy, config).run(klines)
+    result = BacktestEngine(strategy, config).run(klines_bt)
     result.print_summary()
 
     return result, signal_agg

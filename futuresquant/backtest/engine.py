@@ -91,17 +91,18 @@ class BacktestEngine:
         strategy.on_start(klines)
         warmup = max(strategy.warmup_bars, 0)
 
-        pending_prices: Dict[str, float] = {}   # open prices queued for next fill
+        pending_order_symbols: set[str] = set()   # symbols with orders queued for next-bar open
 
         for i, (ts, bar) in enumerate(track(
             klines.iterrows(), total=len(klines), description="Backtesting"
         )):
-            # --- Step 1: fill any orders queued from the previous bar ---
-            if pending_prices:
-                fills = account.fill_pending_orders(pending_prices, ts, cfg.slippage_ticks)
+            # --- Step 1: fill orders queued from the previous bar at THIS bar's open ---
+            if pending_order_symbols:
+                open_prices = {sym: bar["open"] for sym in pending_order_symbols}
+                fills = account.fill_pending_orders(open_prices, ts, cfg.slippage_ticks)
                 for fill in fills:
                     strategy.on_fill(fill)
-                pending_prices = {}
+                pending_order_symbols = set()
 
             # --- Step 2: mark-to-market at current close ---
             account.mark_to_market({cfg.symbol: bar["close"]}, ts)
@@ -118,7 +119,7 @@ class BacktestEngine:
 
                 # Queue any new orders to fill at NEXT bar's open
                 if account._pending_orders:
-                    pending_prices[cfg.symbol] = bar["close"]  # will be replaced by next open
+                    pending_order_symbols.add(cfg.symbol)
 
         # Close any remaining open positions at last bar's close
         account.cancel_all()

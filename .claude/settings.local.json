@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd /d \"I:\\\\stock\\\\FuturesQuant\")",
+      "Bash(.venv\\\\Scripts\\\\python.exe ml\\\\analyze_trades.py)",
+      "Bash(cmd *)",
+      "Bash(powershell *)"
+    ]
+  }
+}

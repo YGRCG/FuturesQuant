@@ -65,16 +65,21 @@ def build_features(
     # 2. 按 freq 聚合（session-aware，不跨交易时段）
     agg_f = session_resample_last(factor_df, freq)
 
+    # 类别/时间特征不参与滞后和滚动统计
+    _cat_cols = ['DayOfWeek', 'SessionCode', 'MinuteOfDay', 'DaysToExpiry']
+    _num_cols = [c for c in agg_f.columns if c not in _cat_cols]
+    agg_f_num = agg_f[_num_cols]
+
     frames = [agg_f]
 
-    # 3. 滞后特征
+    # 3. 滞后特征（仅数值特征）
     for lag in cfg.get('lags', [1, 5, 20]):
-        frames.append(agg_f.shift(lag).add_suffix(f'_lag{lag}'))
+        frames.append(agg_f_num.shift(lag).add_suffix(f'_lag{lag}'))
 
-    # 4. 滚动统计特征
+    # 4. 滚动统计特征（仅数值特征）
     for w in cfg.get('rolling_windows', [20]):
-        frames.append(agg_f.rolling(w).mean().add_suffix(f'_rmean{w}'))
-        frames.append(agg_f.rolling(w).std().add_suffix(f'_rstd{w}'))
+        frames.append(agg_f_num.rolling(w).mean().add_suffix(f'_rmean{w}'))
+        frames.append(agg_f_num.rolling(w).std().add_suffix(f'_rstd{w}'))
 
     X = pd.concat(frames, axis=1)
     X = X.replace([np.inf, -np.inf], np.nan)
@@ -86,10 +91,12 @@ def get_feature_names(cfg: dict, factors: list | None = None, freq: str = '1D') 
     if factors is None:
         factors = _default_factors()
     base_names = [f.name for f in factors]
+    _cat_cols = {'DayOfWeek', 'SessionCode', 'MinuteOfDay', 'DaysToExpiry'}
+    num_names = [n for n in base_names if n not in _cat_cols]
     names = list(base_names)
     for lag in cfg.get('lags', [1, 5, 20]):
-        names += [f'{n}_lag{lag}' for n in base_names]
+        names += [f'{n}_lag{lag}' for n in num_names]
     for w in cfg.get('rolling_windows', [20]):
-        names += [f'{n}_rmean{w}' for n in base_names]
-        names += [f'{n}_rstd{w}' for n in base_names]
+        names += [f'{n}_rmean{w}' for n in num_names]
+        names += [f'{n}_rstd{w}' for n in num_names]
     return names

@@ -126,7 +126,8 @@ def train(cfg: dict) -> dict:
     y_ret = close.pct_change(1).shift(-1).rename('ret')
 
     # 3. 对齐，去掉无法使用的行
-    common = X.dropna(how='all').index.intersection(y.dropna().index)
+    valid_mask = X.notna().sum(axis=1) > (X.shape[1] // 2)
+    common = X[valid_mask].index.intersection(y.dropna().index).intersection(y_ret.dropna().index)
     X, y = X.loc[common], y.loc[common]
     y_ret = y_ret.loc[common]
     print(f'[{_ts()}] 有效样本: {len(X)} bars  特征数: {X.shape[1]}')
@@ -209,8 +210,10 @@ def train(cfg: dict) -> dict:
               f'trees={model.best_iteration}')
 
     # 5. 汇总指标
+    forward_bars = cfg['labels'].get('forward_bars', 1)
     metrics = oof_metrics(y, oof_preds, fold_indices,
-                          bars_per_year=bars_per_year, y_ret=y_ret)
+                          bars_per_year=bars_per_year, y_ret=y_ret,
+                          forward_bars=forward_bars)
     print(f'\n[{_ts()}] OOF 汇总:')
     for k, v in metrics.items():
         if k != 'fold_ICs':
@@ -239,7 +242,7 @@ def train(cfg: dict) -> dict:
         artifacts / f'fold_ic_{timestamp}.html')
     plot_importance(imp_mean).write_html(
         artifacts / f'importance_{timestamp}.html')
-    plot_oof_nav(y, oof_preds, y_ret=y_ret).write_html(
+    plot_oof_nav(y, oof_preds, y_ret=y_ret, forward_bars=forward_bars).write_html(
         artifacts / f'oof_nav_{timestamp}.html')
 
     print(f'[{_ts()}] 产出已保存至 {artifacts}/')
