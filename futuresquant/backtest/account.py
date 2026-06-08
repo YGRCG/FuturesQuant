@@ -113,12 +113,14 @@ class SimAccount:
         return new_fills
 
     def mark_to_market(self, prices: Dict[str, float], time: pd.Timestamp) -> float:
-        """Recompute equity = cash + sum of unrealised PnL. Records equity curve point."""
+        """Recompute equity = cash + frozen margin + unrealised PnL."""
         equity = self._cash
         for symbol, pos in self._positions.items():
             if pos.net != 0 and symbol in prices:
                 spec = self._get_spec(symbol)
                 equity += pos.unrealised_pnl(prices[symbol], spec.multiplier)
+                # 加回开仓时从 cash 扣除的保证金（保证金是冻结担保物，仍属于权益）
+                equity += abs(pos.net) * pos.avg_price * spec.multiplier * spec.margin_ratio
         self._equity_curve.append((time, equity))
         return equity
 

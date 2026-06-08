@@ -81,7 +81,7 @@ class TSMomentum(Factor):
         self.name = f"TSMom_{fast}_{slow}"
 
     def compute(self, klines: pd.DataFrame) -> pd.Series:
-        ret = klines["close"].pct_change(fill_method=None)
+        ret = klines["close"].pct_change()
         return (ret.rolling(self.slow).mean() - ret.rolling(self.fast).mean()).rename(
             self.name
         )

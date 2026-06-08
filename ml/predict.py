@@ -97,10 +97,11 @@ def predict_latest(
     if sel_file:
         import yaml as _yaml
         with open(ROOT / sel_file, encoding='utf-8') as f:
-            sel_cols = _yaml.unsafe_load(f)['selected_features']
+            sel_cols = _yaml.safe_load(f)['selected_features']
         X = X[[c for c in sel_cols if c in X.columns]]
 
-    X_clean = X.dropna(how='all')
+    valid_mask = X.notna().sum(axis=1) > (X.shape[1] // 2)
+    X_clean = X[valid_mask]
 
     # 预测
     preds_raw = model.predict(X_clean)

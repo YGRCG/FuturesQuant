@@ -37,7 +37,7 @@ class OBV(Factor):
             lambda x: 1 if x > 0 else (-1 if x < 0 else 0)
         )
         obv = (klines["volume"] * direction).cumsum()
-        return obv.pct_change(self.norm_period, fill_method=None).rename(self.name)
+        return obv.pct_change(self.norm_period).rename(self.name)
 
 
 class VWAP(Factor):
@@ -81,4 +81,4 @@ class OpenInterestChange(Factor):
 
     def compute(self, klines: pd.DataFrame) -> pd.Series:
         oi = klines["open_interest"]
-        return oi.pct_change(self.period, fill_method=None).rename(self.name)
+        return oi.pct_change(self.period).rename(self.name)

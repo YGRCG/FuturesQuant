@@ -32,18 +32,20 @@ def _triple_barrier_scan(
     upper: np.ndarray,
     lower: np.ndarray,
     max_bars: int,
+    exit_close: np.ndarray,
 ) -> np.ndarray:
     """
     逐 bar 向前扫描，判断先触碰哪个障碍。
 
     Parameters
     ----------
-    close : 收盘价序列
+    close : 入场价序列（决策点价格）
     high  : 最高价序列
     low   : 最低价序列
     upper : 每根 bar 的止盈价位（绝对价格）
     lower : 每根 bar 的止损价位（绝对价格）
     max_bars : 时间障碍（最长持仓 bar 数）
+    exit_close : 实际收盘价序列（用于超时退出时计算收益）
 
     Returns
     -------
@@ -67,17 +69,26 @@ def _triple_barrier_scan(
 
         hit = 0
         for j in range(i + 1, end):
-            if high[j] >= tp:
+            hit_tp = high[j] >= tp
+            hit_sl = low[j] <= sl
+            if hit_tp and hit_sl:
+                # 同 bar 双触碰：用该 bar 收盘价相对入场价判断方向
+                if exit_close[j] >= entry:
+                    hit = 1
+                else:
+                    hit = -1
+                break
+            if hit_tp:
                 hit = 1
                 break
-            if low[j] <= sl:
+            if hit_sl:
                 hit = -1
                 break
 
         if hit != 0:
             labels[i] = hit
         elif end <= n and end > i + 1:
-            ret = close[min(end, n) - 1] / entry - 1.0
+            ret = exit_close[min(end, n) - 1] / entry - 1.0
             if ret > 0:
                 labels[i] = 1
             elif ret < 0:
@@ -140,6 +151,7 @@ def _build_triple_barrier(
         labels = _triple_barrier_scan(
             entry_price.values, klines['high'].values, klines['low'].values,
             upper_price.values, lower_price.values, forward_bars,
+            klines['close'].values,
         )
         return pd.Series(labels, index=ohlc.index, name='label')
 
@@ -163,6 +175,7 @@ def _build_triple_barrier(
         upper_1min.values,
         lower_1min.values,
         max_bars_1min,
+        klines['close'].values,
     )
 
     # 5. 只保留聚合频率时间点的标签（即决策点）

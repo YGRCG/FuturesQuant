@@ -108,7 +108,7 @@ def train(cfg: dict) -> dict:
     if sel_file:
         sel_path = ROOT / sel_file
         with open(sel_path, encoding='utf-8') as f:
-            sel_cfg = yaml.unsafe_load(f)
+            sel_cfg = yaml.safe_load(f)
         sel_cols = sel_cfg['selected_features']
         missing = [c for c in sel_cols if c not in X.columns]
         if missing:
@@ -210,7 +210,7 @@ def train(cfg: dict) -> dict:
               f'trees={model.best_iteration}')
 
     # 5. 汇总指标
-    forward_bars = cfg['labels'].get('forward_bars', 1)
+    forward_bars = cfg['labels'].get('forward_bars', cfg['labels'].get('forward_days', 1))
     metrics = oof_metrics(y, oof_preds, fold_indices,
                           bars_per_year=bars_per_year, y_ret=y_ret,
                           forward_bars=forward_bars)

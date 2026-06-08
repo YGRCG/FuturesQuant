@@ -85,7 +85,7 @@ def run_ml_backtest(
     sel_file = cfg['features'].get('selected_features_file')
     if sel_file:
         with open(ROOT / sel_file, encoding='utf-8') as f:
-            sel_cols = yaml.unsafe_load(f)['selected_features']
+            sel_cols = yaml.safe_load(f)['selected_features']
         X = X[[c for c in sel_cols if c in X.columns]]
         print(f'[{_ts()}] 筛选特征: {len(X.columns)} 个')
 

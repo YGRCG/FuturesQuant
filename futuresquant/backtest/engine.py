@@ -127,7 +127,6 @@ class BacktestEngine:
         pos = account.get_position(cfg.symbol)
         if pos.net != 0:
             last_ts = klines.index[-1]
-            direction_close = "SHORT" if pos.net > 0 else "LONG"
             from futuresquant.backtest.order import Direction, Offset
             account.submit_order(
                 cfg.symbol,
@@ -137,7 +136,9 @@ class BacktestEngine:
                 last_ts,
             )
             account.fill_pending_orders({cfg.symbol: last_bar["close"]}, last_ts, 0)
-            account.mark_to_market({cfg.symbol: last_bar["close"]}, last_ts)
+            # 用微小偏移避免与循环中最后一个权益点时间戳重复
+            close_ts = last_ts + pd.Timedelta(milliseconds=1)
+            account.mark_to_market({cfg.symbol: last_bar["close"]}, close_ts)
 
         strategy.on_end(account)
         return BacktestResult(account, klines, cfg)

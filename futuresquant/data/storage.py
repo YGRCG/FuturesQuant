@@ -142,7 +142,7 @@ class ParquetCache:
                 df[col] = df[col].astype("float32")
         for col in ("volume", "open_interest"):
             if col in df.columns:
-                df[col] = df[col].astype("int32")
+                df[col] = df[col].astype("int64")
 
         df.to_parquet(parquet_path, engine="pyarrow", compression="snappy")
         logger.debug("Cached %d rows → %s", len(df), parquet_path)

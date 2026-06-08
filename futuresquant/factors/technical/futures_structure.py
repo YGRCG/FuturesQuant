@@ -33,7 +33,7 @@ def _contract_to_expiry(contract_id: str) -> pd.Timestamp:
     if not m:
         return pd.NaT
     yy, mm = int(m.group(1)), int(m.group(2))
-    year = 2000 + yy if yy <= 30 else 1900 + yy
+    year = 2000 + yy if yy < 70 else 1900 + yy
     return pd.Timestamp(year=year, month=mm, day=1)
 
 

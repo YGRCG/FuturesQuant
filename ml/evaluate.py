@@ -22,8 +22,9 @@ import plotly.express as px
 # 频率工具
 # ---------------------------------------------------------------------------
 
-# FU 每日交易约 240 根 1min bar（夜盘 21:00-23:00 + 日盘 09:00-15:00，扣休息）
-_FU_MINUTES_PER_DAY = 240
+# FU 每日交易约 345 根 1min bar
+# 夜盘 21:00-23:00 (120) + 早盘 09:00-10:15 (75) + 午前 10:30-11:30 (60) + 午后 13:30-15:00 (90)
+_FU_MINUTES_PER_DAY = 345
 _TRADING_DAYS_PER_YEAR = 252
 
 _FREQ_TO_BARS_PER_YEAR: dict[str, int] = {
@@ -156,12 +157,12 @@ def sharpe_from_pred(
     if forward_bars > 1:
         # 非重叠：每 forward_bars 根 bar 取一个决策点
         df_s = df.iloc[::forward_bars].copy()
-        # signal[T] 基于 features[T]，y_true[T] 是从 T 开始的 forward_bars 期收益
-        # 两者均不包含未来信息（y_true[T] 的入场价即 close[T]，特征也止于 close[T]）
         ls_ret = df_s['signal'] * df_s['ret']
         ann = bars_per_year / forward_bars          # 每年独立决策次数
     else:
-        ls_ret = df['signal'].shift(1) * df['ret']  # 标准 1-bar shift 避免前视
+        # signal[T] 基于 features[T]，ret[T] 是从 close[T] 开始的 1-bar 收益
+        # 两者均不含前视（特征止于 close[T]），与 forward_bars>1 保持一致
+        ls_ret = df['signal'] * df['ret']
         ann = bars_per_year
 
     ls_ret = ls_ret.dropna()
@@ -226,7 +227,7 @@ def plot_oof_nav(
         roll_q_lo = df['pred'].rolling(rolling_window, min_periods=rolling_window // 2).quantile(0.2)
         df['signal'] = np.where(df['pred'] >= roll_q_hi, 1,
                                 np.where(df['pred'] <= roll_q_lo, -1, 0))
-        df['ls_ret'] = df['signal'].shift(1) * df['ret']
+        df['ls_ret'] = df['signal'] * df['ret']
         df['ls_nav'] = (1 + df['ls_ret'].fillna(0)).cumprod()
         df['bh_nav'] = (1 + df['ret'].fillna(0)).cumprod()
         plot_df = df
