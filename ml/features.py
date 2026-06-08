@@ -14,7 +14,7 @@ import pandas as pd
 from ml.resample import session_resample_last
 from futuresquant.factors.engine import FactorEngine
 from futuresquant.factors.technical import (
-    ROC, MOM, RSI, BollingerBand, TSMomentum,
+    ROC, MOM, RSI, BollingerBand, TSMomentum, MA,
     MACross, MACD, ADX, PriceChannel,
     ATR, NormATR, HistoricalVolatility, VolatilityRatio,
     VolumeRatio, OBV, VWAP, OpenInterestChange,
@@ -24,9 +24,10 @@ from futuresquant.factors.technical import (
 
 def _default_factors() -> list:
     base = [
+        MA(5), MA(20), MA(60),
         ROC(20), MOM(20), RSI(14), BollingerBand(20), TSMomentum(5, 20),
         MACross(5, 20), MACD(12, 26, 9), ADX(14), PriceChannel(20),
-        ATR(14), NormATR(14), HistoricalVolatility(240), VolatilityRatio(20, 120),
+        ATR(8), NormATR(8), ATR(14), NormATR(14), HistoricalVolatility(240), VolatilityRatio(20, 120),
         VolumeRatio(20), OBV(20), VWAP(60, 14), OpenInterestChange(20),
         DayOfWeek(), MinuteOfDay(), SessionCode(), DaysToExpiry(),
     ]

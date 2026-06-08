@@ -85,3 +85,15 @@ class TSMomentum(Factor):
         return (ret.rolling(self.slow).mean() - ret.rolling(self.fast).mean()).rename(
             self.name
         )
+
+
+class MA(Factor):
+    """Price deviation from simple moving average: close / SMA(period) - 1."""
+
+    def __init__(self, period: int = 20):
+        self.period = period
+        self.name = f"MA_{period}"
+
+    def compute(self, klines: pd.DataFrame) -> pd.Series:
+        c = klines["close"]
+        return (c / c.rolling(self.period).mean() - 1).rename(self.name)
