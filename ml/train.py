@@ -121,9 +121,10 @@ def train(cfg: dict) -> dict:
     label_type = cfg['labels'].get('label_type', 'regression')
     y = build_labels(klines, cfg['labels'], freq=freq)
 
-    # 1-bar 收益率：用于 Sharpe/NAV 计算（避免 forward_bars>1 时重叠收益被重复计算）
+    # 收益率：用于 Sharpe/NAV 计算
     close = session_resample_last(klines[['close']], freq)['close']
-    y_ret = close.pct_change(1).shift(-1).rename('ret')
+    forward_bars = cfg['labels'].get('forward_bars', cfg['labels'].get('forward_days', 1))
+    y_ret = close.pct_change(forward_bars).shift(-forward_bars).rename('ret')
 
     # 3. 对齐，去掉无法使用的行
     valid_mask = X.notna().sum(axis=1) > (X.shape[1] // 2)
@@ -209,22 +210,21 @@ def train(cfg: dict) -> dict:
               f'IC={fold_ic:.4f}  '
               f'trees={model.best_iteration}')
 
-    # 5. 汇总指标
-    forward_bars = cfg['labels'].get('forward_bars', cfg['labels'].get('forward_days', 1))
+    # 5. 汇总指标（使用与回测对齐的 rolling_window 和交易成本估算）
+    bt_rolling = cfg.get('backtest', {}).get('rolling_window', None)
     metrics = oof_metrics(y, oof_preds, fold_indices,
                           bars_per_year=bars_per_year, y_ret=y_ret,
-                          forward_bars=forward_bars)
+                          forward_bars=forward_bars,
+                          rolling_window=bt_rolling)
     print(f'\n[{_ts()}] OOF 汇总:')
     for k, v in metrics.items():
         if k != 'fold_ICs':
             print(f'  {k:15s}: {v}')
 
-    # 6. 保存产出
-    # 使用最后一折模型作为代表（生产环境可改为全量重训）
-    final_model = models[-1]
+    # 6. 保存产出（所有折模型列表，回测时集成平均）
     model_path = artifacts / f'model_{timestamp}.pkl'
-    joblib.dump(final_model, model_path)
-    print(f'[{_ts()}] 模型已保存: {model_path}')
+    joblib.dump(models, model_path)
+    print(f'[{_ts()}] 已保存 {len(models)} 折集成模型: {model_path}')
 
     oof_path = artifacts / f'oof_preds_{timestamp}.parquet'
     pd.concat([y.rename('y_true'), oof_preds], axis=1).to_parquet(oof_path)

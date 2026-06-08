@@ -66,6 +66,8 @@ def oof_metrics(
     bars_per_year: int = 252,
     y_ret: pd.Series | None = None,
     forward_bars: int = 1,
+    rolling_window: int | None = None,
+    cost_per_trade: float = 0.0,
 ) -> dict:
     """
     汇总 OOF 评估指标。
@@ -79,6 +81,8 @@ def oof_metrics(
     y_ret         : 真实 1-bar 收益率（forward_bars=1 时用于 Sharpe 计算）
     forward_bars  : 标签预测窗口长度。>1 时用非重叠采样 + 全周期收益评估，
                     消除"1-bar执行×N-bar标签"导致的损失聚集和 MaxDD 虚高。
+    rolling_window: 滚动窗口（与回测对齐），None 时使用 sharpe_from_pred 默认值。
+    cost_per_trade: 每次换仓的单边交易成本（占比），用于扣费后 Sharpe 估算。
 
     Returns
     -------
@@ -97,18 +101,25 @@ def oof_metrics(
             if len(fold_ics) > 1 else np.nan)
     ic_pos = np.mean([v > 0 for v in fold_ics]) if fold_ics else np.nan
 
+    extra_kw = {}
+    if rolling_window is not None:
+        extra_kw['rolling_window'] = rolling_window
+    if cost_per_trade > 0:
+        extra_kw['cost_per_trade'] = cost_per_trade
+
     if forward_bars > 1:
-        # 非重叠评估：每 forward_bars 根 bar 取一次决策点，使用全周期真实收益
-        # 消除损失聚集（1次错误预测 = forward_bars 根连续亏损 bar）
+        ret_for_sharpe = y_ret if y_ret is not None else y_true
         sharpe, mdd = sharpe_from_pred(
-            y_true, y_pred,
+            ret_for_sharpe, y_pred,
             bars_per_year=bars_per_year,
             forward_bars=forward_bars,
+            **extra_kw,
         )
     else:
         ret_for_sharpe = y_ret if y_ret is not None else y_true
         sharpe, mdd = sharpe_from_pred(ret_for_sharpe, y_pred,
-                                       bars_per_year=bars_per_year)
+                                       bars_per_year=bars_per_year,
+                                       **extra_kw)
 
     return {
         'IC':          round(ic_val, 4),
@@ -127,6 +138,7 @@ def sharpe_from_pred(
     bars_per_year: int = 252,
     rolling_window: int | None = None,
     forward_bars: int = 1,
+    cost_per_trade: float = 0.0,
 ) -> tuple[float, float]:
     """
     根据预测信号构造多空组合，计算年化 Sharpe 和最大回撤。
@@ -138,6 +150,8 @@ def sharpe_from_pred(
       - 使用该点的全周期真实收益（y_true）作为持仓回报
       - 年化系数调整为 bars_per_year / forward_bars（独立决策次数/年）
     这样 1 次错误预测只贡献 1 个亏损周期而非 forward_bars 个，MaxDD 不再虚高。
+
+    cost_per_trade : 每次换仓扣除的单边成本（占比），用于更真实地估算扣费后 Sharpe。
     """
     df = pd.concat([y_true, y_pred], axis=1).dropna()
     df.columns = ['ret', 'pred']
@@ -155,15 +169,18 @@ def sharpe_from_pred(
     )
 
     if forward_bars > 1:
-        # 非重叠：每 forward_bars 根 bar 取一个决策点
         df_s = df.iloc[::forward_bars].copy()
         ls_ret = df_s['signal'] * df_s['ret']
-        ann = bars_per_year / forward_bars          # 每年独立决策次数
+        ann = bars_per_year / forward_bars
     else:
-        # signal[T] 基于 features[T]，ret[T] 是从 close[T] 开始的 1-bar 收益
-        # 两者均不含前视（特征止于 close[T]），与 forward_bars>1 保持一致
         ls_ret = df['signal'] * df['ret']
         ann = bars_per_year
+
+    if cost_per_trade > 0:
+        signal_changes = df['signal'].diff().abs()
+        if forward_bars > 1:
+            signal_changes = signal_changes.iloc[::forward_bars]
+        ls_ret = ls_ret - signal_changes * cost_per_trade
 
     ls_ret = ls_ret.dropna()
 

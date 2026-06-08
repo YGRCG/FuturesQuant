@@ -12,20 +12,20 @@ data:
   # start_date: "2025-05-01"
   # end_date:   "2026-05-31"
   roll_buffer: 30               # 换月节点前后清洗的 bar 数
-  freq: "30min"                    # 预测频率: 1min / 5min / 15min / 30min / 1H / 4H / 1D
+  freq: "5min"                    # 预测频率: 1min / 5min / 15min / 30min / 1H / 4H / 1D
 
 features:
   lags: [5, 10]              # 对所有因子添加的滞后阶数
   rolling_windows: [ 10, 20, 60, 120]         # 添加滚动均值/标准差的窗口（bar 数）
   selected_features_file: null
-  # selected_features_file: ml/selected_features_30min_forward_8.yaml   # 运行 06 notebook 后自动生成；命名规则: selected_features_{freq}_forward_{forward_bars}.yaml
+  # selected_features_file: ml/selected_features_15min_forward_2.yaml   # 运行 06 notebook 后自动生成；命名规则: selected_features_{freq}_forward_{forward_bars}.yaml
 
 labels:
-  forward_bars: 8               # 预测未来几根 bar 的收益（单位取决于 data.freq）
-  label_type: regression        # regression | classification | triple_barrier
+  forward_bars: 4               # 预测未来几根 bar 的收益（单位取决于 data.freq）
+  label_type: triple_barrier        # regression | classification | triple_barrier
   threshold: 0.003              # 分类标签的阈值（仅 classification 生效）
   # ── triple_barrier 专用参数 ──
-  atr_period: 15              # ATR 计算周期
+  atr_period: 15             # ATR 计算周期
   tp_multiplier: 1.5          # 止盈 = close + tp × ATR
   sl_multiplier: 1.0          # 止损 = close - sl × ATR（盈亏比 = tp/sl）
   # atr_multiplier: 1.5       # 兼容旧配置：未设 tp/sl 时统一使用此值
@@ -35,21 +35,21 @@ model:
   params:
     objective: regression
     metric: rmse
-    num_leaves: 31
+    num_leaves: 15
     learning_rate: 0.02
     feature_fraction: 0.6
     bagging_fraction: 0.8
     bagging_freq: 5
-    min_child_samples: 50
+    min_child_samples: 100
     lambda_l1: 0.05
     lambda_l2: 0.5
     verbose: -1
-  num_boost_round: 500
+  num_boost_round: 200
   early_stopping_rounds: 50
 
 training:
   n_splits: 5                   # 时序交叉验证折数
-  gap: 9        #必须大于forward_bars               # 训练集与验证集之间的间隔（bar 数），防止标签重叠，
+  gap: 5        #必须大于forward_bars               # 训练集与验证集之间的间隔（bar 数），防止标签重叠，
   # test_size: null             # 每折验证集大小（天），null=自动
   # max_train_size: null        # 每折最大训练集大小（天），null=不限
 
@@ -59,3 +59,7 @@ output:
 backtest:
   start_date: "2025-05-01"      # OOS 回测起始日（与 data 训练期分离，避免 in-sample 回测）
   end_date:   "2026-05-31"
+  entry_quantile: 0.9            # 开仓信号分位阈值
+  exit_quantile:  0.5            # 平仓信号分位阈值
+  rolling_window: 500           # 滚动窗口（bar 数），用于计算分位数
+  signal_ema_span: 2           # 信号 EMA 平滑窗口（bar 数），null=不平滑，建议 3~5

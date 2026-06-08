@@ -23,6 +23,7 @@ class MLStrategy(StrategyBase):
         entry_quantile: float = 0.8,
         exit_quantile: float = 0.5,
         rolling_window: int = 500,
+        signal_ema_span: int | None = None,
     ):
         """
         Parameters
@@ -31,12 +32,17 @@ class MLStrategy(StrategyBase):
         entry_quantile  : 滚动分位数阈值，信号 >= 此分位开多，<= (1-此值) 开空
         exit_quantile   : 信号回到此分位以内时平仓
         rolling_window  : 滚动窗口（bar 数），用于计算分位数
+        signal_ema_span : EMA 平滑窗口（bar 数），None 或 0 表示不平滑
         """
-        self.signal = signal
         self.entry_quantile = entry_quantile
         self.exit_quantile = exit_quantile
         self.rolling_window = rolling_window
         self.warmup_bars = rolling_window
+
+        if signal_ema_span and signal_ema_span > 1:
+            self.signal = signal.ewm(span=signal_ema_span, min_periods=1).mean()
+        else:
+            self.signal = signal
 
         self._rolling_hi: pd.Series | None = None
         self._rolling_lo: pd.Series | None = None
